@@ -115,6 +115,7 @@ async def main():
             # Sync slash commands with Discord
             try:
                 guild = discord.Object(id=config.guild_id)
+                bot.tree.copy_global_to(guild=guild)
                 synced = await bot.tree.sync(guild=guild)
                 logger.info(f"Synced {len(synced)} slash command(s)")
             except Exception as e:
@@ -158,6 +159,7 @@ async def main():
             # Sync slash commands with Discord
             try:
                 guild = discord.Object(id=config.guild_id)
+                bot.tree.copy_global_to(guild=guild)
                 synced = await bot.tree.sync(guild=guild)
                 logger.info(f"Synced {len(synced)} slash command(s)")
             except Exception as e:
