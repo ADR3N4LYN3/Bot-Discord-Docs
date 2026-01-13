@@ -2,6 +2,9 @@
 Optralis Discord Docs Bot
 
 Main entry point for the Discord documentation bot.
+Supports two modes:
+- Local file watcher (for local development)
+- GitHub webhook (for VPS deployment)
 """
 
 import asyncio
@@ -11,36 +14,41 @@ from config import load_config
 from utils.logger import setup_logger
 from bot.client import DocsBot
 from bot.events import setup_events
-from watcher.file_watcher import DocsWatcher
-from watcher.event_handler import DocsEventHandler
 
 # Global references for signal handlers
 bot_instance = None
 watcher_instance = None
+webhook_server = None
 logger = None
 
 
 def signal_handler(sig, frame):
     """Handle shutdown signals gracefully."""
-    global bot_instance, watcher_instance, logger
+    global bot_instance, watcher_instance, webhook_server, logger
 
-    logger.info("\n🛑 Shutdown signal received, cleaning up...")
+    if logger:
+        logger.info("\n🛑 Shutdown signal received, cleaning up...")
 
-    # Stop file watcher
+    # Stop file watcher if running
     if watcher_instance and watcher_instance.is_running:
         watcher_instance.stop()
+
+    # Stop webhook server if running
+    if webhook_server:
+        asyncio.create_task(webhook_server.stop())
 
     # Stop bot
     if bot_instance:
         asyncio.create_task(bot_instance.close())
 
-    logger.info("Goodbye!")
+    if logger:
+        logger.info("Goodbye!")
     sys.exit(0)
 
 
 async def main():
     """Main async entry point."""
-    global bot_instance, watcher_instance, logger
+    global bot_instance, watcher_instance, webhook_server, logger
 
     try:
         # Load configuration
@@ -64,10 +72,13 @@ async def main():
     logger.info("=" * 60)
 
     # Log configuration
+    logger.info(f"Mode: {'Webhook' if config.use_webhook else 'File Watcher'}")
     logger.info(f"Docs path: {config.docs_path}")
     logger.info(f"Guild ID: {config.guild_id}")
-    logger.info(f"Max message length: {config.max_message_length}")
-    logger.info(f"Auto-start watcher: {config.auto_start_watcher}")
+
+    if config.use_webhook:
+        logger.info(f"Webhook port: {config.webhook_port}")
+        logger.info(f"Webhook secret: {'configured' if config.webhook_secret else 'NOT SET (insecure!)'}")
 
     # Create bot instance
     logger.info("🔧 Initializing Discord bot...")
@@ -77,51 +88,79 @@ async def main():
     # Setup event handlers
     setup_events(bot)
 
-    # Create file watcher event handler
-    event_handler = DocsEventHandler(bot, config)
-
-    # Create file watcher
-    watcher = DocsWatcher(config, event_handler)
-    watcher_instance = watcher
-
     # Setup signal handlers for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # Add on_ready hook to start file watcher
-    original_on_ready = bot.get_cog("DocsBot") or bot
+    # Setup mode-specific components
+    if config.use_webhook:
+        # Webhook mode for VPS deployment
+        from webhook.server import WebhookServer
+        from webhook.git_handler import GitHandler
 
-    @bot.event
-    async def on_ready():
-        """Extended on_ready to start file watcher."""
-        # Call original on_ready logic
-        logger.info(f"Bot connected as {bot.user} (ID: {bot.user.id})")
-        logger.info(f"Connected to {len(bot.guilds)} guild(s)")
+        git_handler = GitHandler(bot, config)
+        webhook_server = WebhookServer(bot, config, git_handler)
 
-        # Initialize channel resolver
-        success = bot.initialize_channel_resolver()
+        @bot.event
+        async def on_ready():
+            """Start webhook server when bot is ready."""
+            logger.info(f"Bot connected as {bot.user} (ID: {bot.user.id})")
+            logger.info(f"Connected to {len(bot.guilds)} guild(s)")
 
-        if success:
-            logger.info("✅ Bot is ready to receive file events")
-        else:
-            logger.warning(
-                "⚠️ Bot connected but channel setup incomplete. "
-                "Check logs for missing channels."
-            )
+            # Initialize channel resolver
+            success = bot.initialize_channel_resolver()
 
-        # Start file watcher
-        if config.auto_start_watcher:
+            if success:
+                logger.info("✅ Channel resolver initialized")
+            else:
+                logger.warning("⚠️ Channel setup incomplete. Check logs.")
+
+            # Start webhook server
             try:
-                watcher.start()
+                await webhook_server.start()
                 logger.info("=" * 60)
                 logger.info("✅ Bot fully initialized and ready!")
                 logger.info("=" * 60)
-                logger.info(
-                    f"Watching: {config.docs_path}"
-                )
+                logger.info(f"Webhook endpoint: http://0.0.0.0:{config.webhook_port}/webhook")
+                logger.info("Configure this URL in your GitHub repository settings.")
                 logger.info("Press Ctrl+C to stop the bot")
             except Exception as e:
-                logger.error(f"Failed to start file watcher: {e}")
+                logger.error(f"Failed to start webhook server: {e}")
+
+    else:
+        # File watcher mode for local development
+        from watcher.file_watcher import DocsWatcher
+        from watcher.event_handler import DocsEventHandler
+
+        event_handler = DocsEventHandler(bot, config)
+        watcher = DocsWatcher(config, event_handler)
+        watcher_instance = watcher
+
+        @bot.event
+        async def on_ready():
+            """Start file watcher when bot is ready."""
+            logger.info(f"Bot connected as {bot.user} (ID: {bot.user.id})")
+            logger.info(f"Connected to {len(bot.guilds)} guild(s)")
+
+            # Initialize channel resolver
+            success = bot.initialize_channel_resolver()
+
+            if success:
+                logger.info("✅ Channel resolver initialized")
+            else:
+                logger.warning("⚠️ Channel setup incomplete. Check logs.")
+
+            # Start file watcher
+            if config.auto_start_watcher:
+                try:
+                    watcher.start()
+                    logger.info("=" * 60)
+                    logger.info("✅ Bot fully initialized and ready!")
+                    logger.info("=" * 60)
+                    logger.info(f"Watching: {config.docs_path}")
+                    logger.info("Press Ctrl+C to stop the bot")
+                except Exception as e:
+                    logger.error(f"Failed to start file watcher: {e}")
 
     try:
         # Start the bot (blocking)
@@ -136,8 +175,11 @@ async def main():
         # Cleanup
         logger.info("Cleaning up...")
 
-        if watcher.is_running:
-            watcher.stop()
+        if watcher_instance and watcher_instance.is_running:
+            watcher_instance.stop()
+
+        if webhook_server:
+            await webhook_server.stop()
 
         if not bot.is_closed():
             await bot.close()

@@ -33,6 +33,11 @@ class Config:
         self.log_level = self._get_env("LOG_LEVEL", "INFO")
         self.log_file = self._get_env("LOG_FILE", "bot.log")
 
+        # Webhook Configuration (for VPS deployment)
+        self.use_webhook = self._get_bool("USE_WEBHOOK", False)
+        self.webhook_port = self._get_int("WEBHOOK_PORT", 8080)
+        self.webhook_secret = os.getenv("WEBHOOK_SECRET", "")
+
         # Validate configuration
         self._validate()
 
@@ -86,17 +91,18 @@ class Config:
 
     def _validate(self):
         """Validate configuration values."""
-        # Validate docs path exists
-        if not self.docs_path.exists():
-            raise ValueError(
-                f"Documentation path does not exist: {self.docs_path}\n"
-                f"Please create the directory or update DOCS_PATH in .env"
-            )
+        # Validate docs path exists (only if not using webhook or if path is set)
+        if not self.use_webhook:
+            if not self.docs_path.exists():
+                raise ValueError(
+                    f"Documentation path does not exist: {self.docs_path}\n"
+                    f"Please create the directory or update DOCS_PATH in .env"
+                )
 
-        if not self.docs_path.is_dir():
-            raise ValueError(
-                f"Documentation path is not a directory: {self.docs_path}"
-            )
+            if not self.docs_path.is_dir():
+                raise ValueError(
+                    f"Documentation path is not a directory: {self.docs_path}"
+                )
 
         # Validate max message length
         if self.max_message_length > 2000:
