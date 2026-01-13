@@ -1,0 +1,18 @@
+# Discord API
+discord.py>=2.3.2
+
+# File watching
+watchdog>=3.0.0
+
+# Environment management
+python-dotenv>=1.0.0
+
+# Markdown processing
+markdown>=3.5.1
+
+# Async file operations
+aiofiles>=23.2.1
+
+# Testing (development)
+pytest>=7.4.3
+pytest-asyncio>=0.21.1
