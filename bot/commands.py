@@ -59,6 +59,8 @@ def setup_commands(bot):
                     else:
                         folder_name = relative.parts[0]
 
+                    logger.info(f"Processing: {md_file.name} → folder '{folder_name}' (relative: {relative})")
+
                     # Read and parse file
                     content = md_file.read_text(encoding="utf-8")
                     if not content.strip():
