@@ -51,3 +51,6 @@ Thumbs.db
 .claude/
 tmpclaude-*
 nul
+
+# PM2 logs
+logs/
