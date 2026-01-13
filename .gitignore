@@ -46,3 +46,8 @@ Thumbs.db
 
 # Sync state
 .last_sync
+
+# Claude Code temp files
+.claude/
+tmpclaude-*
+nul
