@@ -10,6 +10,7 @@ Supports two modes:
 import asyncio
 import signal
 import sys
+import discord
 from config import load_config
 from utils.logger import setup_logger
 from bot.client import DocsBot
@@ -85,8 +86,12 @@ async def main():
     bot = DocsBot(config)
     bot_instance = bot
 
-    # Setup event handlers
+    # Setup event handlers and commands
     setup_events(bot)
+
+    # Setup slash commands
+    from bot.commands import setup_commands
+    setup_commands(bot)
 
     # Setup signal handlers for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
@@ -106,6 +111,14 @@ async def main():
             """Start webhook server when bot is ready."""
             logger.info(f"Bot connected as {bot.user} (ID: {bot.user.id})")
             logger.info(f"Connected to {len(bot.guilds)} guild(s)")
+
+            # Sync slash commands with Discord
+            try:
+                guild = discord.Object(id=config.guild_id)
+                synced = await bot.tree.sync(guild=guild)
+                logger.info(f"Synced {len(synced)} slash command(s)")
+            except Exception as e:
+                logger.error(f"Failed to sync commands: {e}")
 
             # Initialize channel resolver
             success = bot.initialize_channel_resolver()
@@ -141,6 +154,14 @@ async def main():
             """Start file watcher when bot is ready."""
             logger.info(f"Bot connected as {bot.user} (ID: {bot.user.id})")
             logger.info(f"Connected to {len(bot.guilds)} guild(s)")
+
+            # Sync slash commands with Discord
+            try:
+                guild = discord.Object(id=config.guild_id)
+                synced = await bot.tree.sync(guild=guild)
+                logger.info(f"Synced {len(synced)} slash command(s)")
+            except Exception as e:
+                logger.error(f"Failed to sync commands: {e}")
 
             # Initialize channel resolver
             success = bot.initialize_channel_resolver()
