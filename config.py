@@ -17,8 +17,8 @@ class Config:
         self.discord_token = self._get_required("DISCORD_BOT_TOKEN")
         self.guild_id = self._get_required_int("GUILD_ID")
 
-        # Documentation Path
-        self.docs_path = Path(self._get_required("DOCS_PATH"))
+        # Documentation Path (supports ~ for home directory)
+        self.docs_path = Path(self._get_required("DOCS_PATH")).expanduser()
 
         # Bot Behavior
         self.auto_start_watcher = self._get_bool("AUTO_START_WATCHER", True)
