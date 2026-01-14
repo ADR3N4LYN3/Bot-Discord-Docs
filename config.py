@@ -124,34 +124,28 @@ class Config:
 
     def get_channel_mapping(self) -> dict[str, str]:
         """
-        Get folder to channel name mapping.
+        Get folder and file to channel name mapping.
 
         Returns:
-            Dict mapping folder paths (relative to docs/) to Discord channel names.
+            Dict mapping paths (relative to docs/) to Discord channel names.
+            Supports both folder paths and specific file paths for granular routing.
         """
         return {
-            # 01-users → docs-users
-            "01-users": "docs-users",
+            # Specific spec files → their dedicated channels
+            "specs/AGENT_SPECS.md": "docs-agent",
+            "specs/BACKEND_SPECS.md": "docs-backend",
+            "specs/DATABASE_SPECS.md": "docs-database",
+            "specs/DASHBOARD_SPECS.md": "docs-dashboard",
+            "specs/INSTALLER_SPECS.md": "docs-installer",
+            "specs/AI_QUOTAS_SPECS.md": "docs-api",
 
-            # 02-developers subfolders
-            "02-developers/agent": "docs-agent",
-            "02-developers/api": "docs-api",
-            "02-developers/backend": "docs-backend",
-            "02-developers/dashboard": "docs-dashboard",
-            "02-developers/database": "docs-database",
-            "02-developers/installer": "docs-installer",
-            "02-developers/testing": "docs-testing",
+            # Implementation folder → docs-implementation
+            "implementation": "docs-implementation",
 
-            # 03-devops → docs-devops
-            "03-devops": "docs-devops",
+            # Plans folder → docs-devops
+            "plans": "docs-devops",
 
-            # 04-management → docs-management
-            "04-management": "docs-management",
-
-            # 05-implementation → docs-implementation
-            "05-implementation": "docs-implementation",
-
-            # Root files (index.md, etc.) → documentation
+            # Root files → documentation
             "root": "documentation",
         }
 

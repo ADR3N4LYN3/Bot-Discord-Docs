@@ -106,7 +106,13 @@ class ChannelManager:
         from pathlib import Path
         path = Path(relative_path)
 
-        # Try to find a matching mapping (most specific first)
+        # First, try exact file path match (for file-specific mappings)
+        normalized_path = str(path).replace("\\", "/")
+        if normalized_path in self.channel_mapping:
+            channel_name = self.channel_mapping[normalized_path]
+            return self._find_channel_by_name(channel_name)
+
+        # Try to find a matching folder mapping (most specific first)
         parts = path.parts[:-1]  # Remove filename, keep folders
 
         # Try progressively shorter paths
