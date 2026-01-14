@@ -34,7 +34,7 @@ def setup_commands(bot):
             summary_builder = SummaryBuilder(github_repo_url=bot.config.github_repo_url)
             channel_manager = ChannelManager(
                 guild=interaction.guild,
-                category_name=bot.config.docs_category_name,
+                category_id=bot.config.docs_category_id,
                 auto_create=bot.config.auto_create_channels,
             )
 
@@ -147,10 +147,14 @@ def setup_commands(bot):
             inline=False
         )
 
+        # Get category info
+        category = interaction.guild.get_channel(bot.config.docs_category_id)
+        category_name = category.name if category else "Non trouvée"
+
         embed.add_field(
             name="Configuration",
             value=f"Auto-création: {'✅' if bot.config.auto_create_channels else '❌'}\n"
-                  f"Catégorie: {bot.config.docs_category_name}\n"
+                  f"Catégorie: {category_name}\n"
                   f"GitHub: {'✅ Configuré' if bot.config.github_repo_url else '❌ Non configuré'}",
             inline=False
         )
@@ -158,7 +162,7 @@ def setup_commands(bot):
         # Count channels in DOCS category
         docs_channels = [
             ch for ch in interaction.guild.text_channels
-            if ch.category and ch.category.name.upper() == bot.config.docs_category_name.upper()
+            if ch.category and ch.category.id == bot.config.docs_category_id
         ]
 
         if docs_channels:

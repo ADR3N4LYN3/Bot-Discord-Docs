@@ -43,7 +43,7 @@ class Config:
 
         # Channel Management
         self.auto_create_channels = self._get_bool("AUTO_CREATE_CHANNELS", True)
-        self.docs_category_name = self._get_env("DOCS_CATEGORY_NAME", "DOCS")
+        self.docs_category_id = self._get_int("DOCS_CATEGORY_ID", 0)  # 0 = not set
 
         # Validate configuration
         self._validate()

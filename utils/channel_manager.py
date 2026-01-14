@@ -14,7 +14,7 @@ class ChannelManager:
     def __init__(
         self,
         guild: discord.Guild,
-        category_name: str = "DOCS",
+        category_id: int = 0,
         auto_create: bool = True,
     ):
         """
@@ -22,11 +22,11 @@ class ChannelManager:
 
         Args:
             guild: Discord guild (server)
-            category_name: Name of the category for doc channels
+            category_id: ID of the category for doc channels
             auto_create: Whether to auto-create missing channels
         """
         self.guild = guild
-        self.category_name = category_name
+        self.category_id = category_id
         self.auto_create = auto_create
         self._category_cache: Optional[discord.CategoryChannel] = None
 
@@ -73,37 +73,34 @@ class ChannelManager:
 
         return name
 
-    async def ensure_category_exists(self) -> discord.CategoryChannel:
+    async def ensure_category_exists(self) -> Optional[discord.CategoryChannel]:
         """
-        Ensure the documentation category exists.
+        Get the documentation category by ID.
 
         Returns:
-            CategoryChannel object
+            CategoryChannel object or None if not found
 
         Raises:
-            discord.Forbidden: If bot lacks permissions
+            ValueError: If category ID is not configured
         """
         # Check cache first
         if self._category_cache and self._category_cache in self.guild.categories:
             return self._category_cache
 
-        # Look for existing category
-        for category in self.guild.categories:
-            if category.name.upper() == self.category_name.upper():
-                self._category_cache = category
-                logger.debug(f"Found existing category: {category.name}")
-                return category
+        # Category ID must be set
+        if not self.category_id:
+            raise ValueError("DOCS_CATEGORY_ID is not configured in .env")
 
-        # Create category if auto-create is enabled
-        if self.auto_create:
-            logger.info(f"Creating category: {self.category_name}")
-            category = await self.guild.create_category(self.category_name)
+        # Get category by ID
+        category = self.guild.get_channel(self.category_id)
+
+        if category and isinstance(category, discord.CategoryChannel):
             self._category_cache = category
+            logger.debug(f"Found category: {category.name} (ID: {category.id})")
             return category
-        else:
-            raise ValueError(
-                f"Category '{self.category_name}' not found and auto-create is disabled"
-            )
+
+        logger.error(f"Category with ID {self.category_id} not found")
+        return None
 
     async def find_channel(self, channel_name: str) -> Optional[discord.TextChannel]:
         """

@@ -123,7 +123,7 @@ class GitHandler:
 
                 self.channel_manager = ChannelManager(
                     guild=guild,
-                    category_name=self.config.docs_category_name,
+                    category_id=self.config.docs_category_id,
                     auto_create=self.config.auto_create_channels,
                 )
 
