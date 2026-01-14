@@ -127,31 +127,31 @@ class Config:
         Get folder to channel name mapping.
 
         Returns:
-            Dict mapping folder paths (relative to docs/) to Discord channel names
+            Dict mapping folder paths (relative to docs/) to Discord channel names.
         """
         return {
-            # Users documentation
+            # 01-users → docs-users
             "01-users": "docs-users",
 
-            # Developers documentation (granular by component)
+            # 02-developers subfolders
+            "02-developers/agent": "docs-agent",
             "02-developers/api": "docs-api",
             "02-developers/backend": "docs-backend",
-            "02-developers/agent": "docs-agent",
             "02-developers/dashboard": "docs-dashboard",
             "02-developers/database": "docs-database",
             "02-developers/installer": "docs-installer",
             "02-developers/testing": "docs-testing",
 
-            # DevOps documentation
+            # 03-devops → docs-devops
             "03-devops": "docs-devops",
 
-            # Management documentation
+            # 04-management → docs-management
             "04-management": "docs-management",
 
-            # Implementation notes
+            # 05-implementation → docs-implementation
             "05-implementation": "docs-implementation",
 
-            # Fallback for root docs/*.md files
+            # Root files (index.md, etc.) → documentation
             "root": "documentation",
         }
 
