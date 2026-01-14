@@ -4,9 +4,8 @@ import discord
 from discord import app_commands
 from pathlib import Path
 from utils.logger import get_logger
-from processors.markdown_parser import MarkdownParser
-from processors.message_splitter import MessageSplitter
-from processors.embed_builder import EmbedBuilder
+from processors.summary_builder import SummaryBuilder
+from utils.channel_manager import ChannelManager
 
 logger = get_logger("bot.commands")
 
@@ -30,9 +29,14 @@ def setup_commands(bot):
 
         try:
             docs_path = bot.config.docs_path
-            parser = MarkdownParser()
-            splitter = MessageSplitter(max_length=bot.config.max_message_length - 100)
-            embed_builder = EmbedBuilder(embed_color=bot.config.embed_color)
+
+            # Initialize managers
+            summary_builder = SummaryBuilder(github_repo_url=bot.config.github_repo_url)
+            channel_manager = ChannelManager(
+                guild=interaction.guild,
+                category_name=bot.config.docs_category_name,
+                auto_create=bot.config.auto_create_channels,
+            )
 
             # Find all markdown files
             md_files = list(docs_path.glob("**/*.md"))
@@ -43,54 +47,69 @@ def setup_commands(bot):
                 return
 
             await interaction.followup.send(
-                f"📚 Publication de {total_files} fichier(s) en cours...\n"
-                f"Cela peut prendre quelques minutes."
+                f"📚 Génération de résumés pour {total_files} fichier(s)...\n"
+                f"Création/mise à jour des canaux en cours..."
             )
 
             success_count = 0
             error_count = 0
+            created_channels = 0
+            updated_channels = 0
 
             for md_file in md_files:
                 try:
-                    # Determine folder for channel mapping
-                    relative = md_file.relative_to(docs_path)
-                    if len(relative.parts) == 1:
-                        folder_name = "root"
-                    else:
-                        folder_name = relative.parts[0]
-
-                    logger.info(f"Processing: {md_file.name} → folder '{folder_name}' (relative: {relative})")
-
-                    # Read and parse file
-                    content = md_file.read_text(encoding="utf-8")
-                    if not content.strip():
+                    # Skip README files
+                    if md_file.name.upper() == "README.MD":
+                        logger.info(f"Skipping README: {md_file.name}")
                         continue
 
-                    parsed_doc = parser.parse_file(str(md_file), content)
-                    chunks = splitter.split_with_metadata(parsed_doc.content, md_file.name)
-                    embeds = embed_builder.create_embeds_from_chunks(parsed_doc, chunks)
+                    logger.info(f"Processing: {md_file.name}")
 
-                    # Post to channel
-                    success = await bot.post_to_channel(folder_name, embeds)
+                    # Read file content
+                    content = md_file.read_text(encoding="utf-8")
+                    if not content.strip():
+                        logger.warning(f"Skipping empty file: {md_file.name}")
+                        continue
 
-                    if success:
-                        success_count += 1
-                        logger.info(f"Published {md_file.name} to {folder_name}")
-                    else:
+                    # Build summary
+                    summary = summary_builder.build_summary(md_file, content, docs_path)
+                    embed = summary_builder.create_summary_embed(summary)
+
+                    # Get or create channel
+                    channel = await channel_manager.ensure_channel_exists(md_file.name)
+                    if not channel:
                         error_count += 1
-                        logger.error(f"Failed to publish {md_file.name}")
+                        logger.error(f"Failed to get/create channel for {md_file.name}")
+                        continue
+
+                    # Edit existing message or create new one
+                    messages = [m async for m in channel.history(limit=1)]
+                    if messages and messages[0].author == bot.user:
+                        # Edit existing message
+                        await messages[0].edit(embed=embed)
+                        updated_channels += 1
+                        logger.info(f"Updated summary in #{channel.name}")
+                    else:
+                        # Create new message
+                        await channel.send(embed=embed)
+                        created_channels += 1
+                        logger.info(f"Created summary in #{channel.name}")
+
+                    success_count += 1
 
                 except Exception as e:
                     error_count += 1
-                    logger.error(f"Error processing {md_file}: {e}")
+                    logger.error(f"Error processing {md_file.name}: {e}", exc_info=True)
 
             # Send summary
-            summary = f"✅ Publication terminée !\n\n"
-            summary += f"📄 **{success_count}** fichier(s) publié(s)\n"
+            summary_msg = f"✅ **Refresh terminé !**\n\n"
+            summary_msg += f"📄 {success_count}/{total_files} fichier(s) traité(s)\n"
+            summary_msg += f"✨ {created_channels} nouveau(x) canal/canaux créé(s)\n"
+            summary_msg += f"🔄 {updated_channels} canal/canaux mis à jour\n"
             if error_count > 0:
-                summary += f"❌ **{error_count}** erreur(s)\n"
+                summary_msg += f"❌ {error_count} erreur(s)\n"
 
-            await interaction.channel.send(summary)
+            await interaction.channel.send(summary_msg)
 
         except Exception as e:
             logger.error(f"Error in refresh command: {e}", exc_info=True)
@@ -112,13 +131,13 @@ def setup_commands(bot):
 
         embed.add_field(
             name="Mode",
-            value="Webhook" if bot.config.use_webhook else "File Watcher",
+            value="🌐 Webhook GitHub" if bot.config.use_webhook else "📁 File Watcher",
             inline=True
         )
 
         embed.add_field(
             name="Fichiers surveillés",
-            value=f"{len(md_files)} fichiers .md",
+            value=f"📄 {len(md_files)} fichiers .md",
             inline=True
         )
 
@@ -128,16 +147,24 @@ def setup_commands(bot):
             inline=False
         )
 
-        # Channel status
-        if bot.channel_resolver:
-            channels = bot.channel_resolver.verify_all_channels_exist()
-            channel_status = "\n".join([
-                f"{'✅' if exists else '❌'} #{name}"
-                for name, exists in channels.items()
-            ])
+        embed.add_field(
+            name="Configuration",
+            value=f"Auto-création: {'✅' if bot.config.auto_create_channels else '❌'}\n"
+                  f"Catégorie: {bot.config.docs_category_name}\n"
+                  f"GitHub: {'✅ Configuré' if bot.config.github_repo_url else '❌ Non configuré'}",
+            inline=False
+        )
+
+        # Count channels in DOCS category
+        docs_channels = [
+            ch for ch in interaction.guild.text_channels
+            if ch.category and ch.category.name.upper() == bot.config.docs_category_name.upper()
+        ]
+
+        if docs_channels:
             embed.add_field(
-                name="Canaux",
-                value=channel_status,
+                name=f"Canaux dans {bot.config.docs_category_name}",
+                value=f"📁 {len(docs_channels)} canal/canaux",
                 inline=False
             )
 

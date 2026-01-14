@@ -38,6 +38,13 @@ class Config:
         self.webhook_port = self._get_int("WEBHOOK_PORT", 8080)
         self.webhook_secret = os.getenv("WEBHOOK_SECRET", "")
 
+        # GitHub Configuration (for links in embeds)
+        self.github_repo_url = self._get_env("GITHUB_REPO_URL", "")
+
+        # Channel Management
+        self.auto_create_channels = self._get_bool("AUTO_CREATE_CHANNELS", True)
+        self.docs_category_name = self._get_env("DOCS_CATEGORY_NAME", "DOCS")
+
         # Validate configuration
         self._validate()
 

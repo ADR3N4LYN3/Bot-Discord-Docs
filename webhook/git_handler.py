@@ -5,9 +5,8 @@ import subprocess
 from pathlib import Path
 from typing import List
 from utils.logger import get_logger
-from processors.markdown_parser import MarkdownParser
-from processors.message_splitter import MessageSplitter
-from processors.embed_builder import EmbedBuilder
+from processors.summary_builder import SummaryBuilder
+from utils.channel_manager import ChannelManager
 
 logger = get_logger("webhook.git_handler")
 
@@ -27,10 +26,9 @@ class GitHandler:
         self.config = config
         self.repo_path = config.docs_path.parent  # Repo root (parent of docs/)
 
-        # Initialize processors
-        self.parser = MarkdownParser()
-        self.splitter = MessageSplitter(max_length=config.max_message_length - 100)
-        self.embed_builder = EmbedBuilder(embed_color=config.embed_color)
+        # Initialize summary builder
+        self.summary_builder = SummaryBuilder(github_repo_url=config.github_repo_url)
+        self.channel_manager = None  # Will be initialized when needed
 
     async def pull_and_process(self, modified_files: List[str]):
         """
@@ -89,7 +87,7 @@ class GitHandler:
 
     async def _process_file(self, relative_path: str):
         """
-        Process a single modified file and post to Discord.
+        Process a single modified file and update its Discord channel.
 
         Args:
             relative_path: Path relative to repo root (e.g., "docs/specs/AGENT_SPECS.md")
@@ -101,55 +99,55 @@ class GitHandler:
                 logger.warning(f"File not found after pull: {full_path}")
                 return
 
+            # Skip README files
+            if full_path.name.upper() == "README.MD":
+                logger.info(f"Skipping README: {full_path.name}")
+                return
+
             # Read file content
             content = full_path.read_text(encoding="utf-8")
 
-            if not content:
+            if not content.strip():
                 logger.warning(f"File is empty: {full_path}")
                 return
 
-            # Extract folder for channel mapping
-            # relative_path is like "docs/specs/AGENT_SPECS.md"
-            parts = Path(relative_path).parts
-
-            if len(parts) >= 2 and parts[0] == "docs":
-                if len(parts) == 2:
-                    # File at docs root (e.g., docs/USER_GUIDE.md)
-                    folder_name = "root"
-                else:
-                    # File in subfolder (e.g., docs/specs/AGENT_SPECS.md)
-                    folder_name = parts[1]
-            else:
-                folder_name = "root"
-
             file_name = full_path.name
+            logger.info(f"Processing update for {file_name}")
 
-            logger.info(f"Processing {file_name} (folder: {folder_name})")
+            # Initialize channel manager if needed
+            if not self.channel_manager:
+                guild = self.bot.get_target_guild()
+                if not guild:
+                    logger.error("Cannot process file: guild not found")
+                    return
 
-            # Parse markdown
-            parsed_doc = self.parser.parse_file(str(full_path), content)
-
-            # Split content into chunks
-            chunks = self.splitter.split_with_metadata(
-                parsed_doc.content, file_name
-            )
-
-            logger.info(f"Split {file_name} into {len(chunks)} chunk(s)")
-
-            # Create embeds
-            embeds = self.embed_builder.create_embeds_from_chunks(
-                parsed_doc, chunks
-            )
-
-            # Post to Discord
-            success = await self.bot.post_to_channel(folder_name, embeds)
-
-            if success:
-                logger.info(
-                    f"Posted {file_name} to Discord ({len(embeds)} message(s))"
+                self.channel_manager = ChannelManager(
+                    guild=guild,
+                    category_name=self.config.docs_category_name,
+                    auto_create=self.config.auto_create_channels,
                 )
+
+            # Build summary
+            docs_path = self.config.docs_path
+            summary = self.summary_builder.build_summary(full_path, content, docs_path)
+            embed = self.summary_builder.create_summary_embed(summary)
+
+            # Get or create channel
+            channel = await self.channel_manager.ensure_channel_exists(file_name)
+            if not channel:
+                logger.error(f"Failed to get/create channel for {file_name}")
+                return
+
+            # Edit existing message or create new one
+            messages = [m async for m in channel.history(limit=1)]
+            if messages and messages[0].author == self.bot.user:
+                # Edit existing message
+                await messages[0].edit(embed=embed)
+                logger.info(f"Updated summary in #{channel.name}")
             else:
-                logger.error(f"Failed to post {file_name} to Discord")
+                # Create new message
+                await channel.send(embed=embed)
+                logger.info(f"Created summary in #{channel.name}")
 
         except Exception as e:
             logger.error(f"Error processing file {relative_path}: {e}", exc_info=True)
