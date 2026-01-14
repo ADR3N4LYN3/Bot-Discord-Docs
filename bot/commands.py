@@ -35,6 +35,7 @@ def setup_commands(bot):
             channel_manager = ChannelManager(
                 guild=interaction.guild,
                 category_id=bot.config.docs_category_id,
+                channel_mapping=bot.config.get_channel_mapping(),
                 auto_create=bot.config.auto_create_channels,
             )
 
@@ -75,11 +76,12 @@ def setup_commands(bot):
                     summary = summary_builder.build_summary(md_file, content, docs_path)
                     embed = summary_builder.create_summary_embed(summary)
 
-                    # Get or create channel
-                    channel = await channel_manager.ensure_channel_exists(md_file.name)
+                    # Get channel based on file path and mapping
+                    relative_path = md_file.relative_to(docs_path)
+                    channel = channel_manager.get_channel_for_path(str(relative_path))
                     if not channel:
                         error_count += 1
-                        logger.error(f"Failed to get/create channel for {md_file.name}")
+                        logger.error(f"No channel found for {relative_path}")
                         continue
 
                     # Edit existing message or create new one

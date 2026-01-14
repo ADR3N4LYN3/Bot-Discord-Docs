@@ -124,6 +124,7 @@ class GitHandler:
                 self.channel_manager = ChannelManager(
                     guild=guild,
                     category_id=self.config.docs_category_id,
+                    channel_mapping=self.config.get_channel_mapping(),
                     auto_create=self.config.auto_create_channels,
                 )
 
@@ -132,10 +133,18 @@ class GitHandler:
             summary = self.summary_builder.build_summary(full_path, content, docs_path)
             embed = self.summary_builder.create_summary_embed(summary)
 
-            # Get or create channel
-            channel = await self.channel_manager.ensure_channel_exists(file_name)
+            # Get channel based on path and mapping
+            # relative_path is like "docs/02-developers/backend/API.md"
+            # We need path relative to docs_path: "02-developers/backend/API.md"
+            try:
+                rel_to_docs = full_path.relative_to(docs_path)
+                channel = self.channel_manager.get_channel_for_path(str(rel_to_docs))
+            except ValueError:
+                # File is not under docs_path, try using the relative_path directly
+                channel = self.channel_manager.get_channel_for_path(relative_path.replace("docs/", ""))
+
             if not channel:
-                logger.error(f"Failed to get/create channel for {file_name}")
+                logger.error(f"No channel found for {file_name}")
                 return
 
             # Edit existing message or create new one

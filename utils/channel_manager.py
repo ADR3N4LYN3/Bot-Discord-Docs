@@ -15,6 +15,7 @@ class ChannelManager:
         self,
         guild: discord.Guild,
         category_id: int = 0,
+        channel_mapping: dict = None,
         auto_create: bool = True,
     ):
         """
@@ -23,12 +24,16 @@ class ChannelManager:
         Args:
             guild: Discord guild (server)
             category_id: ID of the category for doc channels
+            channel_mapping: Dict mapping folder paths to channel names
             auto_create: Whether to auto-create missing channels
         """
         self.guild = guild
         self.category_id = category_id
+        self.channel_mapping = channel_mapping or {}
         self.auto_create = auto_create
         self._category_cache: Optional[discord.CategoryChannel] = None
+        self._channel_cache: dict = {}
+        self._build_channel_cache()
 
     def filename_to_channel(self, filename: str) -> str:
         """
@@ -72,6 +77,64 @@ class ChannelManager:
         logger.debug(f"Converted filename '{filename}' → channel '{name}'")
 
         return name
+
+    def _build_channel_cache(self):
+        """Build a cache of channel names to channel objects."""
+        category = self.guild.get_channel(self.category_id)
+        if not category:
+            logger.warning(f"Category {self.category_id} not found")
+            return
+
+        for channel in category.text_channels:
+            # Normalize: lowercase, no dashes/underscores
+            normalized = channel.name.lower().replace("-", "").replace("_", "")
+            self._channel_cache[normalized] = channel
+            logger.debug(f"Cached channel: {channel.name} → {normalized}")
+
+        logger.info(f"Built channel cache: {len(self._channel_cache)} channels")
+
+    def get_channel_for_path(self, relative_path: str) -> Optional[discord.TextChannel]:
+        """
+        Get the channel for a file based on its relative path and the mapping.
+
+        Args:
+            relative_path: Path relative to docs root (e.g., "02-developers/backend/API.md")
+
+        Returns:
+            TextChannel if found, None otherwise
+        """
+        from pathlib import Path
+        path = Path(relative_path)
+
+        # Try to find a matching mapping (most specific first)
+        parts = path.parts[:-1]  # Remove filename, keep folders
+
+        # Try progressively shorter paths
+        for i in range(len(parts), 0, -1):
+            folder_path = "/".join(parts[:i])
+            if folder_path in self.channel_mapping:
+                channel_name = self.channel_mapping[folder_path]
+                return self._find_channel_by_name(channel_name)
+
+        # Fallback to "root" if file is at docs root
+        if len(parts) == 0 and "root" in self.channel_mapping:
+            channel_name = self.channel_mapping["root"]
+            return self._find_channel_by_name(channel_name)
+
+        logger.warning(f"No mapping found for path: {relative_path}")
+        return None
+
+    def _find_channel_by_name(self, channel_name: str) -> Optional[discord.TextChannel]:
+        """Find a channel by name using the cache."""
+        normalized = channel_name.lower().replace("-", "").replace("_", "")
+        channel = self._channel_cache.get(normalized)
+
+        if channel:
+            logger.debug(f"Found channel '{channel_name}' → #{channel.name}")
+        else:
+            logger.warning(f"Channel '{channel_name}' not found in cache")
+
+        return channel
 
     async def ensure_category_exists(self) -> Optional[discord.CategoryChannel]:
         """
